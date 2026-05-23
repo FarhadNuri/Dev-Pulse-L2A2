@@ -1,21 +1,21 @@
-# 🚀 DevPulse - Issue Tracker API
+# DevPulse - Issue Tracker API
 
 A simple and efficient REST API for tracking bugs and feature requests. Built with Node.js, TypeScript, and PostgreSQL.
 
-## 📝 Summary
+## Summary
 
 DevPulse helps development teams track issues and feature requests. Users can sign up, create issues, and manage them based on their role (contributor or maintainer).
 
 **Live API:** https://dev-pulse-l2-a2.vercel.app
 
-## ✨ Features
+## Features
 
-- 🔐 **User Authentication** - JWT-based signup and login
-- 🐛 **Bug Tracking** - Report and track bugs
-- ✨ **Feature Requests** - Submit and manage feature ideas
-- 👥 **Role-Based Access** - Contributors and Maintainers with different permissions
-- 🔒 **Secure** - Password hashing with bcrypt
-- ☁️ **Cloud Deployed** - Hosted on Vercel with Neon PostgreSQL
+- **User Authentication** - JWT-based signup and login
+- **Bug Tracking** - Report and track bugs
+- **Feature Requests** - Submit and manage feature ideas
+- **Role-Based Access** - Contributors and Maintainers with different permissions
+- **Secure** - Password hashing with bcrypt
+- **Cloud Deployed** - Hosted on Vercel with Neon PostgreSQL
 
 ## 🗄️ Database Schema
 
@@ -42,7 +42,7 @@ DevPulse helps development teams track issues and feature requests. Users can si
 - updated_at
 ```
 
-## 🛣️ API Endpoints
+## API Endpoints
 
 ### Authentication
 | Method | Endpoint | Description | Auth Required |
@@ -59,7 +59,7 @@ DevPulse helps development teams track issues and feature requests. Users can si
 | PATCH | `/api/issues/:id` | Update issue | Yes |
 | DELETE | `/api/issues/:id` | Delete issue | Yes (Maintainer only) |
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 src/
@@ -89,7 +89,7 @@ src/
 └── server.ts        # Main server file
 ```
 
-## 🔧 Setup & Installation
+## Setup & Installation
 
 1. **Clone the repository**
 ```bash
@@ -126,7 +126,7 @@ npm run db:init
 npm run dev
 ```
 
-## 🚀 Deployment
+## Deployment
 
 The project is configured for Vercel deployment:
 
@@ -135,7 +135,7 @@ npm run build
 vercel deploy
 ```
 
-## 📖 API Usage Examples
+## API Usage Examples
 
 ### Signup
 ```bash
@@ -196,11 +196,11 @@ DELETE /api/issues/1
 Authorization: Bearer <your-token>
 ```
 
-## 🧪 Testing
+## Testing
 
 Use the included `api-tester.html` file to test all endpoints in your browser.
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Runtime:** Node.js
 - **Language:** TypeScript
@@ -209,7 +209,7 @@ Use the included `api-tester.html` file to test all endpoints in your browser.
 - **Deployment:** Vercel
 - **Build Tool:** tsup
 
-## 📜 Scripts
+## Scripts
 
 ```bash
 npm run dev          # Start development server
@@ -218,15 +218,10 @@ npm start            # Start production server
 npm run db:init      # Initialize database
 ```
 
-## 👥 User Roles
+## User Roles
 
 - **Contributor:** Can create and update issues
 - **Maintainer:** Can create, update, and delete issues
 
-## 📄 License
-
-ISC
 
 ---
-
-Made with ❤️ for efficient issue tracking
