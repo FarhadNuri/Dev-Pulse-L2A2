@@ -3,6 +3,9 @@ import config from "./config";
 import { routeHandler } from "./routes/route";
 import { testConnection } from "./database/db";
 
+// Export routeHandler for Vercel serverless function
+export { routeHandler };
+
 const server: Server = createServer(
   (req: IncomingMessage, res: ServerResponse) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -19,8 +22,11 @@ const server: Server = createServer(
   },
 );
 
-testConnection().then(() => {
-  server.listen(config.port, () => {
-    console.log(`DevPulse server is running on port ${config.port}`);
+// Only start server if not in serverless environment
+if (process.env.VERCEL !== "1") {
+  testConnection().then(() => {
+    server.listen(config.port, () => {
+      console.log(`DevPulse server is running on port ${config.port}`);
+    });
   });
-});
+}

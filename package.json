@@ -5,10 +5,10 @@
   "main": "src/server.ts",
   "scripts": {
     "dev": "tsx watch ./src/server.ts",
-    "build": "tsc",
+    "build": "tsup",
     "start": "node dist/server.js",
     "db:init": "tsx ./src/database/init.ts",
-    "vercel-build": "echo 'Build complete'"
+    "vercel-build": "tsup"
   },
   "engines": {
     "node": ">=18.x"
@@ -21,9 +21,9 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/node": "^25.5.0",
     "@types/bcrypt": "^5.0.2",
     "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^25.5.0",
     "@types/pg": "^8.20.0",
     "@vercel/node": "^3.0.0",
     "typescript": "^6.0.2"
@@ -34,6 +34,7 @@
     "http-status-codes": "^2.3.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.21.0",
+    "tsup": "^8.5.1",
     "tsx": "^4.21.0"
   }
 }
