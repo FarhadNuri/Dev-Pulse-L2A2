@@ -21,10 +21,11 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/node": "^25.5.0",
     "@types/bcrypt": "^5.0.2",
     "@types/jsonwebtoken": "^9.0.7",
-    "@types/node": "^25.5.0",
     "@types/pg": "^8.20.0",
+    "@vercel/node": "^3.0.0",
     "typescript": "^6.0.2"
   },
   "dependencies": {
