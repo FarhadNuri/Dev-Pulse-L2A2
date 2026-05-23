@@ -2,12 +2,16 @@
   "name": "devpulse",
   "version": "1.0.0",
   "description": "DevPulse - Internal Tech Issue & Feature Tracker",
-  "main": "index.js",
+  "main": "src/server.ts",
   "scripts": {
     "dev": "tsx watch ./src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "db:init": "tsx ./src/database/init.ts"
+    "db:init": "tsx ./src/database/init.ts",
+    "vercel-build": "echo 'Build complete'"
+  },
+  "engines": {
+    "node": ">=18.x"
   },
   "keywords": [
     "issue-tracker",
