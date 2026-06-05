@@ -50,8 +50,11 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
       return;
     }
 
+    // ← ONLY CHANGE: added verifyAuth with optional=true
     if (url.startsWith("/api/issues") && method === "GET" && !id) {
-      getAllIssuesController(req as AuthRequest, res);
+      const authReq = req as AuthRequest;
+      verifyAuth(authReq, res, true); // optional auth — populates req.user if token exists
+      getAllIssuesController(authReq, res);
       return;
     }
 

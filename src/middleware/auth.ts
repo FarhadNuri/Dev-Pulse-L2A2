@@ -8,10 +8,15 @@ export interface AuthRequest extends IncomingMessage {
   user?: IJwtPayload;
 }
 
-export const verifyAuth = (req: AuthRequest, res: ServerResponse): boolean => {
+export const verifyAuth = (
+  req: AuthRequest,
+  res: ServerResponse,
+  optional: boolean = false, // ← NEW: optional mode for public routes
+): boolean => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
+    if (optional) return true; // ← no token, continue as guest
     sendResponse(
       res,
       StatusCodes.UNAUTHORIZED,
@@ -28,6 +33,7 @@ export const verifyAuth = (req: AuthRequest, res: ServerResponse): boolean => {
   const decoded = verifyToken(token);
 
   if (!decoded) {
+    if (optional) return true; // ← invalid token, continue as guest
     sendResponse(
       res,
       StatusCodes.UNAUTHORIZED,
