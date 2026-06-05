@@ -8,6 +8,7 @@
     "build": "tsup",
     "start": "node dist/server.js",
     "db:init": "tsx ./src/database/init.ts",
+    "db:migrate": "tsx ./src/database/migrate.ts",
     "vercel-build": "tsup"
   },
   "engines": {

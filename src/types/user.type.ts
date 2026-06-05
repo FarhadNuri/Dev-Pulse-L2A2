@@ -3,7 +3,7 @@ export interface IUser {
   name: string;
   email: string;
   password: string;
-  role: "contributor" | "maintainer";
+  role: "contributor" | "maintainer" | "client";
   created_at: string;
   updated_at: string;
 }
@@ -12,7 +12,7 @@ export interface IUserResponse {
   id: number;
   name: string;
   email: string;
-  role: "contributor" | "maintainer";
+  role: "contributor" | "maintainer" | "client";
   created_at: string;
   updated_at: string;
 }
@@ -21,7 +21,7 @@ export interface ISignupRequest {
   name: string;
   email: string;
   password: string;
-  role?: "contributor" | "maintainer";
+  role?: "contributor" | "maintainer" | "client";
 }
 
 export interface ILoginRequest {
@@ -32,5 +32,5 @@ export interface ILoginRequest {
 export interface IJwtPayload {
   id: number;
   name: string;
-  role: "contributor" | "maintainer";
+  role: "contributor" | "maintainer" | "client";
 }

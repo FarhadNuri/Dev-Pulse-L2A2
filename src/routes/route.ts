@@ -6,6 +6,8 @@ import {
   getSingleIssueController,
   updateIssueController,
   deleteIssueController,
+  getPendingIssuesController,
+  approveIssueController,
 } from "../controller/issue.controller";
 import { verifyAuth, isMaintainer, type AuthRequest } from "../middleware/auth";
 import { sendResponse } from "../utility/sendResponse";
@@ -40,8 +42,24 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
     const urlParts = url.split("/");
     const id = urlParts[3] ? Number(urlParts[3].split("?")[0]) : null;
 
+    if (url.startsWith("/api/issues/pending") && method === "GET") {
+      const authReq = req as AuthRequest;
+      if (!verifyAuth(authReq, res)) return;
+      if (!isMaintainer(authReq, res)) return;
+      getPendingIssuesController(authReq, res);
+      return;
+    }
+
     if (url.startsWith("/api/issues") && method === "GET" && !id) {
       getAllIssuesController(req as AuthRequest, res);
+      return;
+    }
+
+    if (url.includes("/approve") && method === "PATCH" && id !== null && !isNaN(id)) {
+      const authReq = req as AuthRequest;
+      if (!verifyAuth(authReq, res)) return;
+      if (!isMaintainer(authReq, res)) return;
+      approveIssueController(authReq, res, id);
       return;
     }
 

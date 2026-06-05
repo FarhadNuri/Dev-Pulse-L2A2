@@ -6,13 +6,15 @@ export const createIssue = async (
   description: string,
   type: string,
   reporterId: number,
+  appName?: string,
+  approvalStatus?: string,
 ): Promise<IIssue> => {
   const query = `
-    INSERT INTO issues (title, description, type, reporter_id)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO issues (title, description, type, reporter_id, app_name, approval_status)
+    VALUES ($1, $2, $3, $4, $5, $6)
     RETURNING *
   `;
-  const values = [title, description, type, reporterId];
+  const values = [title, description, type, reporterId, appName || null, approvalStatus || 'approved'];
   const result = await pool.query(query, values);
   return result.rows[0] as IIssue;
 };
@@ -21,10 +23,22 @@ export const getAllIssues = async (
   sortOrder?: string,
   typeFilter?: string,
   statusFilter?: string,
+  userRole?: string,
+  userId?: number,
 ): Promise<IIssue[]> => {
   let query = "SELECT * FROM issues WHERE 1=1";
   const values: any[] = [];
   let paramCount = 1;
+
+  if (userRole === "client" && userId) {
+    query += ` AND reporter_id = $${paramCount}`;
+    values.push(userId);
+    paramCount++;
+  } else {
+    query += ` AND approval_status = $${paramCount}`;
+    values.push('approved');
+    paramCount++;
+  }
 
   if (typeFilter) {
     query += ` AND type = $${paramCount}`;
@@ -109,4 +123,32 @@ export const deleteIssue = async (id: number): Promise<boolean> => {
   const query = "DELETE FROM issues WHERE id = $1";
   const result = await pool.query(query, [id]);
   return (result.rowCount ?? 0) > 0;
+};
+
+export const getPendingIssues = async (): Promise<IIssue[]> => {
+  const query = `
+    SELECT * FROM issues 
+    WHERE approval_status = 'pending' 
+    ORDER BY created_at DESC
+  `;
+  const result = await pool.query(query);
+  return result.rows;
+};
+
+export const approveIssue = async (
+  id: number,
+  action: "approved" | "rejected",
+  maintainerId: number,
+): Promise<IIssue | null> => {
+  const query = `
+    UPDATE issues
+    SET approval_status = $1,
+        approved_by = $2,
+        approved_at = NOW()
+    WHERE id = $3
+    RETURNING *
+  `;
+  const values = [action, maintainerId, id];
+  const result = await pool.query(query, values);
+  return result.rows[0] || null;
 };

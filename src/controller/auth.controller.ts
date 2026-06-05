@@ -32,12 +32,12 @@ export const signup = async (req: IncomingMessage, res: ServerResponse) => {
     }
 
     const role = body.role || "contributor";
-    if (role !== "contributor" && role !== "maintainer") {
+    if (role !== "contributor" && role !== "maintainer" && role !== "client") {
       return sendResponse(
         res,
         StatusCodes.BAD_REQUEST,
         false,
-        "Role must be either 'contributor' or 'maintainer'",
+        "Role must be 'contributor', 'maintainer', or 'client'",
       );
     }
 
