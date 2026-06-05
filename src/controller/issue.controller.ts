@@ -235,14 +235,6 @@ export const updateIssueController = async (
           "You can only update your own issues",
         );
       }
-      if (existingIssue.status !== "open") {
-        return sendResponse(
-          res,
-          StatusCodes.CONFLICT,
-          false,
-          "You can only update issues with 'open' status",
-        );
-      }
     }
 
     if (body.title && body.title.length > 150) {
@@ -272,11 +264,21 @@ export const updateIssueController = async (
       );
     }
 
+    if (body.status && body.status !== "open" && body.status !== "in_progress" && body.status !== "resolved") {
+      return sendResponse(
+        res,
+        StatusCodes.BAD_REQUEST,
+        false,
+        "Status must be 'open', 'in_progress', or 'resolved'",
+      );
+    }
+
     const updatedIssue = await updateIssue(
       id,
       body.title,
       body.description,
       body.type,
+      body.status,
     );
 
     if (!updatedIssue) {

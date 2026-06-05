@@ -59,6 +59,7 @@ export const updateIssue = async (
   title?: string,
   description?: string,
   type?: string,
+  status?: string,
 ): Promise<IIssue | null> => {
   const updates: string[] = [];
   const values: any[] = [];
@@ -79,6 +80,12 @@ export const updateIssue = async (
   if (type !== undefined) {
     updates.push(`type = $${paramCount}`);
     values.push(type);
+    paramCount++;
+  }
+
+  if (status !== undefined) {
+    updates.push(`status = $${paramCount}`);
+    values.push(status);
     paramCount++;
   }
 
