@@ -101,7 +101,6 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
       return;
     }
 
-    // ← REMOVED isMaintainer check — permission now handled inside controller
     if (method === "DELETE" && id !== null && !isNaN(id)) {
       const authReq = req as AuthRequest;
       if (!verifyAuth(authReq, res)) return;

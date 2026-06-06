@@ -9,7 +9,7 @@ const runMigration = async () => {
     const migrationPath = path.join(__dirname, "migration-client-approval.sql");
     const migration = fs.readFileSync(migrationPath, "utf-8");
 
-    // Split by semicolon and execute each statement
+
     const statements = migration
       .split(";")
       .map(s => s.trim())
@@ -21,7 +21,6 @@ const runMigration = async () => {
         await pool.query(statement);
         console.log(`✓ Executed: ${statement.substring(0, 60)}...`);
       } catch (error: any) {
-        // Ignore "already exists" errors
         if (
           error.code === '42701' || // duplicate column
           error.code === '42P07' || // duplicate table
@@ -36,13 +35,7 @@ const runMigration = async () => {
       }
     }
     
-    console.log("\n✅ Migration completed successfully!");
-    console.log("✅ New features added:");
-    console.log("   - Client role added to users table");
-    console.log("   - approval_status, app_name, approved_by, approved_at columns added to issues table");
-    console.log("   - All existing issues set to 'approved' status");
     
-    // Show current state
     try {
       const issueStats = await pool.query(
         "SELECT COUNT(*) as total_issues, approval_status FROM issues GROUP BY approval_status"

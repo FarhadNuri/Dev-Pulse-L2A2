@@ -3,7 +3,6 @@ import config from "./config";
 import { routeHandler } from "./routes/route";
 import { testConnection } from "./database/db";
 
-// Export routeHandler for Vercel serverless function
 export { routeHandler };
 
 const server: Server = createServer(
@@ -22,7 +21,7 @@ const server: Server = createServer(
   },
 );
 
-// Only start server if not in serverless environment
+
 if (process.env.VERCEL !== "1") {
   testConnection().then(() => {
     server.listen(config.port, () => {

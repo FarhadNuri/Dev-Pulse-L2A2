@@ -160,8 +160,7 @@ export const deleteCommentController = async (
       );
     }
 
-    // maintainer can delete any comment
-    // others can only delete their own
+
     if (userRole !== "maintainer" && comment.author_id !== userId) {
       return sendResponse(
         res,

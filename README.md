@@ -1,18 +1,33 @@
-# DevPulse - Issue Tracker API
+# DevPulse - Issue Tracking & Collaboration Platform
 
-A simple and efficient REST API for tracking bugs and feature requests. Built with Node.js, TypeScript, and PostgreSQL.
+A modern, production-ready REST API for issue management and team collaboration. Built with Node.js, TypeScript, and PostgreSQL, featuring role-based access control, comprehensive commenting system, and secure authentication.
 
-## Summary
+## About
 
-DevPulse helps development teams track issues and feature requests. Users can sign up, create issues, and manage them based on their role (contributor or maintainer).
+DevPulse is a robust backend platform designed for development teams and client collaboration. It streamlines bug tracking, feature requests, and client feedback management with a RESTful architecture. The API features JWT-based authentication, role-based permissions (client, contributor, maintainer), and a rich commenting system for threaded discussions—all optimized for scalability and security with cloud deployment on Vercel and Neon PostgreSQL.
 
-**Live API:** https://dev-pulse-l2-a2.vercel.app
+## Live Application
+
+> Explore DevPulse in action:
+>
+> **🌐 https://devpulsev2.vercel.app/**
+>
+> Track issues, collaborate with teams, and deliver quality software
+
+## Frontend Repo
+
+> Explore DevPulse frontend:
+>
+> **🌐 https://github.com/FarhadNuri/DevPulse-Client**
+>
+>
 
 ## Features
 
 - **User Authentication** - JWT-based signup and login
 - **Bug Tracking** - Report and track bugs
 - **Feature Requests** - Submit and manage feature ideas
+- **Comments System** - Discussion threads on issues with author information
 - **Role-Based Access** - Contributors and Maintainers with different permissions
 - **Secure** - Password hashing with bcrypt
 - **Cloud Deployed** - Hosted on Vercel with Neon PostgreSQL
@@ -42,6 +57,16 @@ DevPulse helps development teams track issues and feature requests. Users can si
 - updated_at
 ```
 
+### Comments Table
+```sql
+- id (Primary Key)
+- issue_id (Foreign Key to issues, CASCADE on delete)
+- author_id (Foreign Key to users, CASCADE on delete)
+- body (Text, max 1000 characters)
+- created_at
+- updated_at
+```
+
 ## API Endpoints
 
 ### Authentication
@@ -59,6 +84,13 @@ DevPulse helps development teams track issues and feature requests. Users can si
 | PATCH | `/api/issues/:id` | Update issue | Yes |
 | DELETE | `/api/issues/:id` | Delete issue | Yes (Maintainer only) |
 
+### Comments
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET | `/api/issues/:id/comments` | Get all comments for an issue | No |
+| POST | `/api/issues/:id/comments` | Add comment to an issue | Yes (All roles) |
+| DELETE | `/api/comments/:id` | Delete a comment | Yes (Own comment or Maintainer) |
+
 ## Project Structure
 
 ```
@@ -66,21 +98,26 @@ src/
 ├── config/          # Environment configuration
 ├── controller/      # Request handlers
 │   ├── auth.controller.ts
-│   └── issue.controller.ts
+│   ├── issue.controller.ts
+│   └── comment.controller.ts
 ├── database/        # Database setup
 │   ├── db.ts
 │   ├── init.ts
-│   └── schema.sql
+│   ├── schema.sql
+│   ├── migrate-comments.sql
+│   └── migrate-comments.ts
 ├── middleware/      # Authentication middleware
 │   └── auth.ts
 ├── routes/          # Route definitions
 │   └── route.ts
 ├── service/         # Business logic
 │   ├── user.service.ts
-│   └── issue.service.ts
+│   ├── issue.service.ts
+│   └── comment.service.ts
 ├── types/           # TypeScript types
 │   ├── user.type.ts
-│   └── issue.type.ts
+│   ├── issue.type.ts
+│   └── comment.type.ts
 ├── utility/         # Helper functions
 │   ├── jwt.ts
 │   ├── password.ts
@@ -89,51 +126,6 @@ src/
 └── server.ts        # Main server file
 ```
 
-## Setup & Installation
-
-1. **Clone the repository**
-```bash
-git clone <your-repo-url>
-cd devpulse
-```
-
-2. **Install dependencies**
-```bash
-npm install
-```
-
-3. **Setup environment variables**
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your values:
-```env
-PORT=5000
-DATABASE_URL=your_neon_database_url
-JWT_SECRET=your_secret_key
-JWT_EXPIRES_IN=7d
-BCRYPT_SALT_ROUNDS=10
-```
-
-4. **Initialize database**
-```bash
-npm run db:init
-```
-
-5. **Run development server**
-```bash
-npm run dev
-```
-
-## Deployment
-
-The project is configured for Vercel deployment:
-
-```bash
-npm run build
-vercel deploy
-```
 
 ## API Usage Examples
 
@@ -196,9 +188,28 @@ DELETE /api/issues/1
 Authorization: Bearer <your-token>
 ```
 
-## Testing
+### Get Comments for Issue
+```bash
+GET /api/issues/1/comments
+```
 
-Use the included `api-tester.html` file to test all endpoints in your browser.
+### Add Comment to Issue
+```bash
+POST /api/issues/1/comments
+Authorization: Bearer <your-token>
+Content-Type: application/json
+
+{
+  "body": "I'm experiencing the same issue on iOS 16"
+}
+```
+
+### Delete Comment
+```bash
+DELETE /api/comments/5
+Authorization: Bearer <your-token>
+```
+
 
 ## Tech Stack
 
@@ -209,19 +220,17 @@ Use the included `api-tester.html` file to test all endpoints in your browser.
 - **Deployment:** Vercel
 - **Build Tool:** tsup
 
-## Scripts
+## Developed By
 
-```bash
-npm run dev          # Start development server
-npm run build        # Build for production
-npm start            # Start production server
-npm run db:init      # Initialize database
-```
+**Farhad Nuri**
 
-## User Roles
+- Email: farhadnuri559@gmail.com
 
-- **Contributor:** Can create and update issues
-- **Maintainer:** Can create, update, and delete issues
+- GitHub: [@FarhadNuri](https://github.com/FarhadNuri)
 
+- LinkedIn: [Farhad Nuri](https://www.linkedin.com/in/farhad-nuri-ba99a62a5/)
 
 ---
+
+**⭐ Star this repo if you found it helpful!**
+

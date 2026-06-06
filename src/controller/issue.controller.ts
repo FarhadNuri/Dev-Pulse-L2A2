@@ -71,7 +71,6 @@ export const createIssueController = async (
       );
     }
 
-    // Determine approval status and app_name requirements based on role
     let approvalStatus = "approved";
     let appName = body.app_name;
 
@@ -361,8 +360,6 @@ export const deleteIssueController = async (
       );
     }
 
-    // maintainer can delete any issue
-    // contributor and client can only delete their own issues
     const isMaintainerRole = userRole === "maintainer";
     const isOwnIssue = existingIssue.reporter_id === userId;
 

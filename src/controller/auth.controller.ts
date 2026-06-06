@@ -69,7 +69,6 @@ export const login = async (req: IncomingMessage, res: ServerResponse) => {
   try {
     const body: ILoginRequest = await parseBody(req);
 
-    // Validate required fields
     if (!body.email || !body.password) {
       return sendResponse(
         res,
