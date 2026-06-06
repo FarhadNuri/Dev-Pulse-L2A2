@@ -9,6 +9,11 @@ import {
   getPendingIssuesController,
   approveIssueController,
 } from "../controller/issue.controller";
+import {
+  getCommentsController,
+  createCommentController,
+  deleteCommentController,
+} from "../controller/comment.controller";
 import { verifyAuth, isMaintainer, type AuthRequest } from "../middleware/auth";
 import { sendResponse } from "../utility/sendResponse";
 import { StatusCodes } from "http-status-codes";
@@ -50,10 +55,9 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
       return;
     }
 
-    // ← ONLY CHANGE: added verifyAuth with optional=true
     if (url.startsWith("/api/issues") && method === "GET" && !id) {
       const authReq = req as AuthRequest;
-      verifyAuth(authReq, res, true); // optional auth — populates req.user if token exists
+      verifyAuth(authReq, res, true);
       getAllIssuesController(authReq, res);
       return;
     }
@@ -63,6 +67,18 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
       if (!verifyAuth(authReq, res)) return;
       if (!isMaintainer(authReq, res)) return;
       approveIssueController(authReq, res, id);
+      return;
+    }
+
+    if (method === "GET" && id !== null && !isNaN(id) && url.includes("/comments")) {
+      getCommentsController(req as AuthRequest, res, id);
+      return;
+    }
+
+    if (method === "POST" && id !== null && !isNaN(id) && url.includes("/comments")) {
+      const authReq = req as AuthRequest;
+      if (!verifyAuth(authReq, res)) return;
+      createCommentController(authReq, res, id);
       return;
     }
 
@@ -85,11 +101,23 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
       return;
     }
 
+    // ← REMOVED isMaintainer check — permission now handled inside controller
     if (method === "DELETE" && id !== null && !isNaN(id)) {
       const authReq = req as AuthRequest;
       if (!verifyAuth(authReq, res)) return;
-      if (!isMaintainer(authReq, res)) return;
       deleteIssueController(authReq, res, id);
+      return;
+    }
+  }
+
+  if (url?.startsWith("/api/comments")) {
+    const urlParts = url.split("/");
+    const commentId = urlParts[3] ? Number(urlParts[3].split("?")[0]) : null;
+
+    if (method === "DELETE" && commentId !== null && !isNaN(commentId)) {
+      const authReq = req as AuthRequest;
+      if (!verifyAuth(authReq, res)) return;
+      deleteCommentController(authReq, res, commentId);
       return;
     }
   }

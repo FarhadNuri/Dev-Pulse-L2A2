@@ -349,6 +349,32 @@ export const deleteIssueController = async (
       return sendResponse(res, StatusCodes.NOT_FOUND, false, "Issue not found");
     }
 
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (!userId || !userRole) {
+      return sendResponse(
+        res,
+        StatusCodes.UNAUTHORIZED,
+        false,
+        "Authentication required",
+      );
+    }
+
+    // maintainer can delete any issue
+    // contributor and client can only delete their own issues
+    const isMaintainerRole = userRole === "maintainer";
+    const isOwnIssue = existingIssue.reporter_id === userId;
+
+    if (!isMaintainerRole && !isOwnIssue) {
+      return sendResponse(
+        res,
+        StatusCodes.FORBIDDEN,
+        false,
+        "You can only delete your own issues",
+      );
+    }
+
     const deleted = await deleteIssue(id);
 
     if (!deleted) {
