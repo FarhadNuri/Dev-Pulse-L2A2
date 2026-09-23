@@ -61,7 +61,7 @@ export const createIssueController = async (
 
     const reporterId = req.user?.id;
     const userRole = req.user?.role;
-    
+
     if (!reporterId || !userRole) {
       return sendResponse(
         res,
@@ -86,7 +86,10 @@ export const createIssueController = async (
       }
     }
 
+    const projectId = (req as any).params?.projectId;
+
     const newIssue = await createIssue(
+      projectId,
       body.title,
       body.description,
       body.type,
@@ -148,9 +151,12 @@ export const getAllIssuesController = async (
       );
     }
 
+    const projectId = (req as any).params?.projectId;
+
     const issues = await getAllIssues(
-      sortOrder, 
-      typeFilter, 
+      projectId,
+      sortOrder,
+      typeFilter,
       statusFilter,
       req.user?.role,
       req.user?.id,

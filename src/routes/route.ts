@@ -31,6 +31,7 @@ import {
   addMaintainerController,
 } from "../controller/maintainer.controller";
 import { verifyAuth, isMaintainer, type AuthRequest } from "../middleware/auth";
+import { requireProjectAccess } from "../middleware/requireProjectAccess";
 import { sendResponse } from "../utility/sendResponse";
 import { StatusCodes } from "http-status-codes";
 
@@ -71,12 +72,6 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
       return;
     }
 
-    if (url.startsWith("/api/issues") && method === "GET" && !id) {
-      const authReq = req as AuthRequest;
-      verifyAuth(authReq, res, true);
-      getAllIssuesController(authReq, res);
-      return;
-    }
 
     if (url.includes("/approve") && method === "PATCH" && id !== null && !isNaN(id)) {
       const authReq = req as AuthRequest;
@@ -103,12 +98,6 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
       return;
     }
 
-    if (url === "/api/issues" && method === "POST") {
-      const authReq = req as AuthRequest;
-      if (!verifyAuth(authReq, res)) return;
-      createIssueController(authReq, res);
-      return;
-    }
 
     if (method === "PATCH" && id !== null && !isNaN(id)) {
       const authReq = req as AuthRequest;
@@ -222,6 +211,26 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
         if (!verifyAuth(authReq, res)) return;
         (authReq as any).params = { id: id };
         addMaintainerController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "issues" && method === "GET") {
+        const authReq = req as AuthRequest;
+        verifyAuth(authReq, res, true);
+        const hasAccess = await requireProjectAccess(authReq, res, id);
+        if (!hasAccess) return;
+        (authReq as any).params = { projectId: id };
+        getAllIssuesController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "issues" && method === "POST") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        const hasAccess = await requireProjectAccess(authReq, res, id);
+        if (!hasAccess) return;
+        (authReq as any).params = { projectId: id };
+        createIssueController(authReq, res);
         return;
       }
     }
