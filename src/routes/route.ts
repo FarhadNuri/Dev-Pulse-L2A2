@@ -26,6 +26,10 @@ import {
   listContributorsController,
   revokeContributorController,
 } from "../controller/access.controller";
+import {
+  listMaintainersController,
+  addMaintainerController,
+} from "../controller/maintainer.controller";
 import { verifyAuth, isMaintainer, type AuthRequest } from "../middleware/auth";
 import { sendResponse } from "../utility/sendResponse";
 import { StatusCodes } from "http-status-codes";
@@ -202,6 +206,22 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
         if (!verifyAuth(authReq, res)) return;
         (authReq as any).params = { id: id, memberId: memberId };
         revokeContributorController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "maintainers" && method === "GET") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        listMaintainersController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "maintainers" && method === "POST") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        addMaintainerController(authReq, res);
         return;
       }
     }
