@@ -234,6 +234,8 @@ export const getSingleIssueController = async (
   }
 };
 
+import { hasProjectAccess } from "../service/project.service";
+
 export const updateIssueController = async (
   req: AuthRequest,
   res: ServerResponse,
@@ -259,13 +261,23 @@ export const updateIssueController = async (
       );
     }
 
-    if (userRole !== "maintainer") {
+    if (userRole === "client") {
       if (existingIssue.reporter_id !== userId) {
         return sendResponse(
           res,
           StatusCodes.FORBIDDEN,
           false,
           "You can only update your own issues",
+        );
+      }
+    } else if (userRole === "contributor") {
+      const hasAccess = await hasProjectAccess(existingIssue.project_id, userId);
+      if (!hasAccess && existingIssue.reporter_id !== userId) {
+        return sendResponse(
+          res,
+          StatusCodes.FORBIDDEN,
+          false,
+          "You must be an approved contributor to update this issue",
         );
       }
     }
