@@ -25,6 +25,7 @@ import {
   decideRequestController,
   listContributorsController,
   revokeContributorController,
+  addContributorController,
 } from "../controller/access.controller";
 import {
   listMaintainersController,
@@ -187,6 +188,14 @@ export async function routeHandler(req: IncomingMessage, res: ServerResponse) {
         if (!verifyAuth(authReq, res)) return;
         (authReq as any).params = { id: id };
         listContributorsController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "contributors" && method === "POST") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        addContributorController(authReq, res);
         return;
       }
 

@@ -12,6 +12,18 @@ export async function requestAccess(projectId: number, userId: number) {
   return result.rows[0];
 }
 
+export async function addContributor(projectId: number, userId: number) {
+  const result = await pool.query(
+    `INSERT INTO project_members (project_id, user_id, role, status, decided_at)
+     VALUES ($1, $2, 'contributor', 'approved', NOW())
+     ON CONFLICT (project_id, user_id)
+     DO UPDATE SET status = 'approved', decided_at = NOW(), role = 'contributor'
+     RETURNING *`,
+    [projectId, userId]
+  );
+  return result.rows[0];
+}
+
 export async function listPendingRequests(projectId: number) {
   const result = await pool.query(
     `SELECT pm.id, pm.status, pm.requested_at, u.name AS requester_name
