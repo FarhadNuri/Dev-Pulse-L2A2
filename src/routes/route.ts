@@ -35,7 +35,7 @@ import { requireProjectAccess } from "../middleware/requireProjectAccess";
 import { sendResponse } from "../utility/sendResponse";
 import { StatusCodes } from "http-status-codes";
 
-export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
+export const routeHandler = async (req: IncomingMessage, res: ServerResponse) => {
   const url = req.url;
   const method = req.method;
 
@@ -155,7 +155,7 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
     }
 
     if (id !== null && !isNaN(id) && urlParts.length >= 5) {
-      const subRoute = urlParts[4].split("?")[0];
+      const subRoute = urlParts[4]?.split("?")[0];
       const memberId = urlParts[5] ? Number(urlParts[5].split("?")[0]) : null;
 
       if (subRoute === "request-access" && method === "POST") {
