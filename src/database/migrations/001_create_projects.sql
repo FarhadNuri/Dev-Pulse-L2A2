@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS projects (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT NOW()
+);
