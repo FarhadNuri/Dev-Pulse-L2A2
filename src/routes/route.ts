@@ -14,6 +14,11 @@ import {
   createCommentController,
   deleteCommentController,
 } from "../controller/comment.controller";
+import {
+  createProjectController,
+  getProjectsController,
+  getProjectByIdController,
+} from "../controller/project.controller";
 import { verifyAuth, isMaintainer, type AuthRequest } from "../middleware/auth";
 import { sendResponse } from "../utility/sendResponse";
 import { StatusCodes } from "http-status-codes";
@@ -117,6 +122,35 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
       const authReq = req as AuthRequest;
       if (!verifyAuth(authReq, res)) return;
       deleteCommentController(authReq, res, commentId);
+      return;
+    }
+  }
+
+  if (url?.startsWith("/api/projects")) {
+    const urlParts = url.split("/");
+    const id = urlParts[3] ? Number(urlParts[3].split("?")[0]) : null;
+
+    if (url === "/api/projects" && method === "POST") {
+      const authReq = req as AuthRequest;
+      if (!verifyAuth(authReq, res)) return;
+      if (!isMaintainer(authReq, res)) return;
+      createProjectController(authReq, res);
+      return;
+    }
+
+    if (url === "/api/projects" && method === "GET") {
+      const authReq = req as AuthRequest;
+      if (!verifyAuth(authReq, res)) return;
+      getProjectsController(authReq, res);
+      return;
+    }
+
+    if (method === "GET" && id !== null && !isNaN(id) && urlParts.length === 4) {
+      const authReq = req as AuthRequest;
+      if (!verifyAuth(authReq, res)) return;
+      // pass req.params.id to the controller by attaching it
+      (authReq as any).params = { id: id };
+      getProjectByIdController(authReq, res);
       return;
     }
   }
