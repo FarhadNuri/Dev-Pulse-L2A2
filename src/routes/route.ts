@@ -18,6 +18,8 @@ import {
   createProjectController,
   getProjectsController,
   getProjectByIdController,
+  getPendingProjectsController,
+  approveProjectController
 } from "../controller/project.controller";
 import {
   requestAccessController,
@@ -131,10 +133,17 @@ export async function routeHandler(req: IncomingMessage, res: ServerResponse) {
     const urlParts = url.split("/");
     const id = urlParts[3] ? Number(urlParts[3].split("?")[0]) : null;
 
+    if (url === "/api/projects/pending" && method === "GET") {
+      const authReq = req as AuthRequest;
+      if (!verifyAuth(authReq, res)) return;
+      getPendingProjectsController(authReq, res);
+      return;
+    }
+
     if (url === "/api/projects" && method === "POST") {
       const authReq = req as AuthRequest;
       if (!verifyAuth(authReq, res)) return;
-      if (!isMaintainer(authReq, res)) return;
+      // Clients and maintainers can create projects
       createProjectController(authReq, res);
       return;
     }
@@ -158,6 +167,14 @@ export async function routeHandler(req: IncomingMessage, res: ServerResponse) {
     if (id !== null && !isNaN(id) && urlParts.length >= 5) {
       const subRoute = urlParts[4]?.split("?")[0];
       const memberId = urlParts[5] ? Number(urlParts[5].split("?")[0]) : null;
+
+      if (subRoute === "approve" && method === "PATCH") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        approveProjectController(authReq, res);
+        return;
+      }
 
       if (subRoute === "request-access" && method === "POST") {
         const authReq = req as AuthRequest;

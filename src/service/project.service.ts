@@ -1,12 +1,13 @@
 import { pool } from "../database/db";
 
-export async function createProject(name: string, creatorId: number) {
+export async function createProject(name: string, creatorId: number, userRole: string) {
   const client = await pool.connect();
   try {
+    const approvalStatus = userRole === 'client' ? 'pending' : 'approved';
     await client.query("BEGIN");
     const projectResult = await client.query(
-      "INSERT INTO projects (name, created_by) VALUES ($1, $2) RETURNING *",
-      [name, creatorId]
+      "INSERT INTO projects (name, created_by, approval_status) VALUES ($1, $2, $3) RETURNING *",
+      [name, creatorId, approvalStatus]
     );
     const project = projectResult.rows[0];
 
@@ -32,20 +33,46 @@ export async function getProjectsForMaintainer(userId: number) {
   const result = await pool.query(
     `SELECT p.* FROM projects p
      JOIN project_members pm ON pm.project_id = p.id
-     WHERE pm.user_id = $1 AND pm.role = 'maintainer' AND pm.status = 'approved'
+     WHERE pm.user_id = $1 AND pm.role = 'maintainer' AND pm.status = 'approved' AND p.approval_status = 'approved'
      ORDER BY p.created_at DESC`,
     [userId]
   );
   return result.rows;
 }
 
-// Contributor sees every project, plus their own membership status (or null).
+export async function getPendingProjects() {
+  const result = await pool.query(
+    `SELECT p.* FROM projects p WHERE p.approval_status = 'pending' ORDER BY p.created_at DESC`
+  );
+  return result.rows;
+}
+
+export async function approveProject(projectId: number, action: 'approved' | 'rejected') {
+  const result = await pool.query(
+    `UPDATE projects SET approval_status = $1 WHERE id = $2 RETURNING *`,
+    [action, projectId]
+  );
+  return result.rows[0];
+}
+
+export async function getProjectsForClient(userId: number) {
+  const result = await pool.query(
+    `SELECT p.* FROM projects p
+     WHERE p.created_by = $1
+     ORDER BY p.created_at DESC`,
+    [userId]
+  );
+  return result.rows;
+}
+
+// Contributor sees every approved project, plus their own membership status (or null).
 export async function getProjectsForContributor(userId: number) {
   const result = await pool.query(
     `SELECT p.*, pm.status AS access_status
      FROM projects p
      LEFT JOIN project_members pm
        ON pm.project_id = p.id AND pm.user_id = $1 AND pm.role = 'contributor'
+     WHERE p.approval_status = 'approved'
      ORDER BY p.created_at DESC`,
     [userId]
   );
