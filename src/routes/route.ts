@@ -19,6 +19,13 @@ import {
   getProjectsController,
   getProjectByIdController,
 } from "../controller/project.controller";
+import {
+  requestAccessController,
+  listRequestsController,
+  decideRequestController,
+  listContributorsController,
+  revokeContributorController,
+} from "../controller/access.controller";
 import { verifyAuth, isMaintainer, type AuthRequest } from "../middleware/auth";
 import { sendResponse } from "../utility/sendResponse";
 import { StatusCodes } from "http-status-codes";
@@ -152,6 +159,51 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
       (authReq as any).params = { id: id };
       getProjectByIdController(authReq, res);
       return;
+    }
+
+    if (id !== null && !isNaN(id) && urlParts.length >= 5) {
+      const subRoute = urlParts[4].split("?")[0];
+      const memberId = urlParts[5] ? Number(urlParts[5].split("?")[0]) : null;
+
+      if (subRoute === "request-access" && method === "POST") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        requestAccessController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "access-requests" && method === "GET") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        listRequestsController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "access-requests" && method === "PATCH" && memberId !== null && !isNaN(memberId)) {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id, memberId: memberId };
+        decideRequestController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "contributors" && method === "GET") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        listContributorsController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "contributors" && method === "PATCH" && memberId !== null && !isNaN(memberId) && urlParts[6]?.split("?")[0] === "revoke") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id, memberId: memberId };
+        revokeContributorController(authReq, res);
+        return;
+      }
     }
   }
 
