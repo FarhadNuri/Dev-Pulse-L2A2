@@ -35,7 +35,7 @@ import { requireProjectAccess } from "../middleware/requireProjectAccess";
 import { sendResponse } from "../utility/sendResponse";
 import { StatusCodes } from "http-status-codes";
 
-export const routeHandler = async (req: IncomingMessage, res: ServerResponse) => {
+export async function routeHandler(req: IncomingMessage, res: ServerResponse) {
   const url = req.url;
   const method = req.method;
 
