@@ -28,14 +28,12 @@ export async function createProject(name: string, creatorId: number, userRole: s
   }
 }
 
-// Maintainer sees only projects where they are a member (any role, approved).
+// Maintainer (Admin) sees ALL approved projects
 export async function getProjectsForMaintainer(userId: number) {
   const result = await pool.query(
     `SELECT p.* FROM projects p
-     JOIN project_members pm ON pm.project_id = p.id
-     WHERE pm.user_id = $1 AND pm.role = 'maintainer' AND pm.status = 'approved' AND p.approval_status = 'approved'
-     ORDER BY p.created_at DESC`,
-    [userId]
+     WHERE p.approval_status = 'approved'
+     ORDER BY p.created_at DESC`
   );
   return result.rows;
 }
@@ -85,7 +83,9 @@ export async function getProjectById(projectId: number) {
 }
 
 // Any approved member (maintainer or contributor) can view the board.
-export async function hasProjectAccess(projectId: number, userId: number) {
+export async function hasProjectAccess(projectId: number, userId: number, userRole?: string) {
+  if (userRole === "maintainer") return true;
+
   const result = await pool.query(
     "SELECT status FROM project_members WHERE project_id = $1 AND user_id = $2",
     [projectId, userId]
@@ -94,7 +94,9 @@ export async function hasProjectAccess(projectId: number, userId: number) {
 }
 
 // Only approved maintainers can manage the project (approve/reject/revoke/add maintainer).
-export async function isProjectMaintainer(projectId: number, userId: number) {
+export async function isProjectMaintainer(projectId: number, userId: number, userRole?: string) {
+  if (userRole === "maintainer") return true;
+
   const result = await pool.query(
     `SELECT 1 FROM project_members
      WHERE project_id = $1 AND user_id = $2 AND role = 'maintainer' AND status = 'approved'`,

@@ -11,7 +11,7 @@ export async function requestAccessController(req: any, res: any) {
 }
 
 async function assertIsMaintainerOfProject(req: any, res: any, projectId: number) {
-  const ok = await projectService.isProjectMaintainer(projectId, req.user.id);
+  const ok = await projectService.isProjectMaintainer(projectId, req.user.id, req.user.role);
   if (!ok) sendResponse(res, 403, false, "You are not a maintainer of this project");
   return ok;
 }

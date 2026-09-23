@@ -11,7 +11,7 @@ export async function listMaintainersController(req: any, res: any) {
 
 export async function addMaintainerController(req: any, res: any) {
   const projectId = Number(req.params.id);
-  const isMaintainerHere = await projectService.isProjectMaintainer(projectId, req.user.id);
+  const isMaintainerHere = await projectService.isProjectMaintainer(projectId, req.user.id, req.user.role);
   if (!isMaintainerHere) return sendResponse(res, 403, false, "You are not a maintainer of this project");
 
   const body: any = await parseBody(req);

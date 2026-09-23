@@ -50,7 +50,7 @@ export async function approveProjectController(req: any, res: any) {
 
 export async function getProjectByIdController(req: any, res: any) {
   const projectId = Number(req.params.id);
-  const allowed = await projectService.hasProjectAccess(projectId, req.user.id);
+  const allowed = await projectService.hasProjectAccess(projectId, req.user.id, req.user.role);
   if (!allowed) return sendResponse(res, 403, false, "You don't have access to this project");
 
   const project = await projectService.getProjectById(projectId);
