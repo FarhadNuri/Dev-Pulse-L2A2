@@ -8,6 +8,10 @@ export const pool = new Pool({
   },
 });
 
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
+});
+
 export const testConnection = async () => {
   try {
     const client = await pool.connect();

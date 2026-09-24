@@ -2,6 +2,7 @@ import { pool } from "../database/db";
 import type { IIssue } from "../types/issue.type";
 
 export const createIssue = async (
+  projectId: number,
   title: string,
   description: string,
   type: string,
@@ -10,25 +11,26 @@ export const createIssue = async (
   approvalStatus?: string,
 ): Promise<IIssue> => {
   const query = `
-    INSERT INTO issues (title, description, type, reporter_id, app_name, approval_status)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO issues (project_id, title, description, type, reporter_id, app_name, approval_status)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING *
   `;
-  const values = [title, description, type, reporterId, appName || null, approvalStatus || 'approved'];
+  const values = [projectId, title, description, type, reporterId, appName || null, approvalStatus || 'approved'];
   const result = await pool.query(query, values);
   return result.rows[0] as IIssue;
 };
 
 export const getAllIssues = async (
+  projectId: number,
   sortOrder?: string,
   typeFilter?: string,
   statusFilter?: string,
   userRole?: string,
   userId?: number,
 ): Promise<IIssue[]> => {
-  let query = "SELECT * FROM issues WHERE 1=1";
-  const values: any[] = [];
-  let paramCount = 1;
+  let query = "SELECT * FROM issues WHERE project_id = $1";
+  const values: any[] = [projectId];
+  let paramCount = 2;
 
   if (userRole === "client" && userId) {
     query += ` AND reporter_id = $${paramCount}`;

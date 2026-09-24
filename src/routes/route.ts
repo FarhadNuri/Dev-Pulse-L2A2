@@ -14,11 +14,31 @@ import {
   createCommentController,
   deleteCommentController,
 } from "../controller/comment.controller";
+import {
+  createProjectController,
+  getProjectsController,
+  getProjectByIdController,
+  getPendingProjectsController,
+  approveProjectController
+} from "../controller/project.controller";
+import {
+  requestAccessController,
+  listRequestsController,
+  decideRequestController,
+  listContributorsController,
+  revokeContributorController,
+  addContributorController,
+} from "../controller/access.controller";
+import {
+  listMaintainersController,
+  addMaintainerController,
+} from "../controller/maintainer.controller";
 import { verifyAuth, isMaintainer, type AuthRequest } from "../middleware/auth";
+import { requireProjectAccess } from "../middleware/requireProjectAccess";
 import { sendResponse } from "../utility/sendResponse";
 import { StatusCodes } from "http-status-codes";
 
-export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
+export async function routeHandler(req: IncomingMessage, res: ServerResponse) {
   const url = req.url;
   const method = req.method;
 
@@ -55,12 +75,6 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
       return;
     }
 
-    if (url.startsWith("/api/issues") && method === "GET" && !id) {
-      const authReq = req as AuthRequest;
-      verifyAuth(authReq, res, true);
-      getAllIssuesController(authReq, res);
-      return;
-    }
 
     if (url.includes("/approve") && method === "PATCH" && id !== null && !isNaN(id)) {
       const authReq = req as AuthRequest;
@@ -87,12 +101,6 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
       return;
     }
 
-    if (url === "/api/issues" && method === "POST") {
-      const authReq = req as AuthRequest;
-      if (!verifyAuth(authReq, res)) return;
-      createIssueController(authReq, res);
-      return;
-    }
 
     if (method === "PATCH" && id !== null && !isNaN(id)) {
       const authReq = req as AuthRequest;
@@ -118,6 +126,139 @@ export const routeHandler = (req: IncomingMessage, res: ServerResponse) => {
       if (!verifyAuth(authReq, res)) return;
       deleteCommentController(authReq, res, commentId);
       return;
+    }
+  }
+
+  if (url?.startsWith("/api/projects")) {
+    const urlParts = url.split("/");
+    const id = urlParts[3] ? Number(urlParts[3].split("?")[0]) : null;
+
+    if (url === "/api/projects/pending" && method === "GET") {
+      const authReq = req as AuthRequest;
+      if (!verifyAuth(authReq, res)) return;
+      getPendingProjectsController(authReq, res);
+      return;
+    }
+
+    if (url === "/api/projects" && method === "POST") {
+      const authReq = req as AuthRequest;
+      if (!verifyAuth(authReq, res)) return;
+      // Clients and maintainers can create projects
+      createProjectController(authReq, res);
+      return;
+    }
+
+    if (url === "/api/projects" && method === "GET") {
+      const authReq = req as AuthRequest;
+      if (!verifyAuth(authReq, res)) return;
+      getProjectsController(authReq, res);
+      return;
+    }
+
+    if (method === "GET" && id !== null && !isNaN(id) && urlParts.length === 4) {
+      const authReq = req as AuthRequest;
+      if (!verifyAuth(authReq, res)) return;
+      // pass req.params.id to the controller by attaching it
+      (authReq as any).params = { id: id };
+      getProjectByIdController(authReq, res);
+      return;
+    }
+
+    if (id !== null && !isNaN(id) && urlParts.length >= 5) {
+      const subRoute = urlParts[4]?.split("?")[0];
+      const memberId = urlParts[5] ? Number(urlParts[5].split("?")[0]) : null;
+
+      if (subRoute === "approve" && method === "PATCH") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        approveProjectController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "request-access" && method === "POST") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        requestAccessController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "access-requests" && method === "GET") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        listRequestsController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "access-requests" && method === "PATCH" && memberId !== null && !isNaN(memberId)) {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id, memberId: memberId };
+        decideRequestController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "contributors" && method === "GET") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        listContributorsController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "contributors" && method === "POST") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        addContributorController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "contributors" && method === "PATCH" && memberId !== null && !isNaN(memberId) && urlParts[6]?.split("?")[0] === "revoke") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id, memberId: memberId };
+        revokeContributorController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "maintainers" && method === "GET") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        listMaintainersController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "maintainers" && method === "POST") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        (authReq as any).params = { id: id };
+        addMaintainerController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "issues" && method === "GET") {
+        const authReq = req as AuthRequest;
+        verifyAuth(authReq, res, true);
+        const hasAccess = await requireProjectAccess(authReq, res, id);
+        if (!hasAccess) return;
+        (authReq as any).params = { projectId: id };
+        getAllIssuesController(authReq, res);
+        return;
+      }
+
+      if (subRoute === "issues" && method === "POST") {
+        const authReq = req as AuthRequest;
+        if (!verifyAuth(authReq, res)) return;
+        const hasAccess = await requireProjectAccess(authReq, res, id);
+        if (!hasAccess) return;
+        (authReq as any).params = { projectId: id };
+        createIssueController(authReq, res);
+        return;
+      }
     }
   }
 
