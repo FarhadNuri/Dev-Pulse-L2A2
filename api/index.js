@@ -11,5 +11,5 @@ module.exports = function handler(req, res) {
     return;
   }
 
-  routeHandler(req, res);
+  return routeHandler(req, res);
 };
