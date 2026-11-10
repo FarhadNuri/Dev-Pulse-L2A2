@@ -4,6 +4,8 @@ export interface IUser {
   email: string;
   password: string;
   role: "contributor" | "maintainer" | "client";
+  status?: "active" | "disabled";
+  is_super_admin?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -13,6 +15,8 @@ export interface IUserResponse {
   name: string;
   email: string;
   role: "contributor" | "maintainer" | "client";
+  is_super_admin?: boolean;
+  status?: "active" | "disabled";
   created_at: string;
   updated_at: string;
 }
@@ -32,5 +36,8 @@ export interface ILoginRequest {
 export interface IJwtPayload {
   id: number;
   name: string;
-  role: "contributor" | "maintainer" | "client";
+  email?: string;
+  role?: "contributor" | "maintainer" | "client";
+  is_super_admin?: boolean;
+  status?: "active" | "disabled";
 }
