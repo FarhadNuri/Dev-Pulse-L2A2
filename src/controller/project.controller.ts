@@ -1,58 +1,153 @@
-import * as projectService from "../service/project.service";
-import { sendResponse } from "../utility/sendResponse";
+import type { ServerResponse } from "http";
+import { StatusCodes } from "http-status-codes";
 import { parseBody } from "../utility/parseBody";
+import { sendResponse } from "../utility/sendResponse";
+import * as projectService from "../service/project.service";
+import type { OrgRequest } from "../types/org.type";
+import { validateSchema, createProjectSchema, updateProjectSchema } from "../validation";
 
-export async function createProjectController(req: any, res: any) {
-  const body: any = await parseBody(req);
-  const { name } = body;
-  if (!name || name.trim().length === 0) {
-    return sendResponse(res, 400, false, "Project name is required");
+/**
+ * GET /api/orgs/:orgId/projects
+ */
+export async function listProjectsController(req: OrgRequest, res: ServerResponse) {
+  try {
+    const orgId = Number(req.params?.orgId);
+    const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
+    const archived = url.searchParams.get("archived") === "true";
+
+    const projects = await projectService.listProjects(
+      orgId,
+      req.user!.id,
+      req.orgRole!,
+      !!req.actingAsSuperAdmin,
+      archived
+    );
+
+    return sendResponse(res, StatusCodes.OK, true, "Projects retrieved successfully", projects);
+  } catch (error) {
+    console.error("listProjects error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to list projects");
   }
-  const project = await projectService.createProject(name.trim(), req.user.id, req.user.role);
-  return sendResponse(res, 201, true, "Project created", project);
 }
 
-export async function getProjectsController(req: any, res: any) {
-  let projects;
-  if (req.user.role === "client") {
-    projects = await projectService.getProjectsForClient(req.user.id);
-  } else if (req.user.role === "maintainer") {
-    projects = await projectService.getProjectsForMaintainer(req.user.id);
-  } else {
-    projects = await projectService.getProjectsForContributor(req.user.id);
+/**
+ * POST /api/orgs/:orgId/projects
+ */
+export async function createProjectController(req: OrgRequest, res: ServerResponse) {
+  try {
+    const orgId = Number(req.params?.orgId);
+    const rawBody = await parseBody(req);
+    const val = validateSchema(createProjectSchema, rawBody);
+    if (!val.success) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, val.error);
+    }
+
+    const project = await projectService.createProject(
+      orgId,
+      val.data.name,
+      req.user!.id,
+      val.data.description,
+      !!req.actingAsSuperAdmin
+    );
+
+    return sendResponse(res, StatusCodes.CREATED, true, "Project created successfully", project);
+  } catch (error) {
+    console.error("createProject error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to create project");
   }
-  return sendResponse(res, 200, true, "Projects fetched", projects);
 }
 
-export async function getPendingProjectsController(req: any, res: any) {
-  if (req.user.role !== "maintainer") {
-    return sendResponse(res, 403, false, "Only maintainers can view pending projects");
+/**
+ * GET /api/orgs/:orgId/projects/:projectId
+ */
+export async function getProjectController(req: OrgRequest, res: ServerResponse) {
+  try {
+    const orgId = Number(req.params?.orgId);
+    const projectId = Number(req.params?.projectId);
+
+    const project = await projectService.getProjectDetails(
+      orgId,
+      projectId,
+      req.user!.id,
+      req.orgRole!,
+      !!req.actingAsSuperAdmin
+    );
+
+    if (!project) {
+      return sendResponse(res, StatusCodes.NOT_FOUND, false, "Project not found");
+    }
+
+    return sendResponse(res, StatusCodes.OK, true, "Project retrieved successfully", project);
+  } catch (error) {
+    console.error("getProject error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to retrieve project");
   }
-  const projects = await projectService.getPendingProjects();
-  return sendResponse(res, 200, true, "Pending projects fetched", projects);
 }
 
-export async function approveProjectController(req: any, res: any) {
-  if (req.user.role !== "maintainer") {
-    return sendResponse(res, 403, false, "Only maintainers can approve projects");
+/**
+ * PATCH /api/orgs/:orgId/projects/:projectId
+ */
+export async function updateProjectController(req: OrgRequest, res: ServerResponse) {
+  try {
+    const orgId = Number(req.params?.orgId);
+    const projectId = Number(req.params?.projectId);
+    const rawBody = await parseBody(req);
+
+    const val = validateSchema(updateProjectSchema, rawBody);
+    if (!val.success) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, val.error);
+    }
+
+    const updated = await projectService.updateProject(
+      orgId,
+      projectId,
+      {
+        name: val.data.name,
+        description: val.data.description,
+      },
+      req.user!.id,
+      !!req.actingAsSuperAdmin
+    );
+
+    if (!updated) {
+      return sendResponse(res, StatusCodes.NOT_FOUND, false, "Project not found");
+    }
+
+    return sendResponse(res, StatusCodes.OK, true, "Project updated successfully", updated);
+  } catch (error) {
+    console.error("updateProject error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to update project");
   }
-  const projectId = Number(req.params.id);
-  const body: any = await parseBody(req);
-  const { action } = body;
-  
-  if (action !== "approved" && action !== "rejected") {
-    return sendResponse(res, 400, false, "Action must be 'approved' or 'rejected'");
-  }
-  
-  const project = await projectService.approveProject(projectId, action);
-  return sendResponse(res, 200, true, `Project ${action}`, project);
 }
 
-export async function getProjectByIdController(req: any, res: any) {
-  const projectId = Number(req.params.id);
-  const allowed = await projectService.hasProjectAccess(projectId, req.user.id, req.user.role);
-  if (!allowed) return sendResponse(res, 403, false, "You don't have access to this project");
+/**
+ * PATCH /api/orgs/:orgId/projects/:projectId/archive
+ */
+export async function archiveProjectController(req: OrgRequest, res: ServerResponse) {
+  try {
+    const orgId = Number(req.params?.orgId);
+    const projectId = Number(req.params?.projectId);
+    const rawBody = await parseBody(req);
 
-  const project = await projectService.getProjectById(projectId);
-  return sendResponse(res, 200, true, "Project fetched", project);
+    if (typeof rawBody.archived !== "boolean") {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, "archived field must be a boolean");
+    }
+
+    const updated = await projectService.updateProject(
+      orgId,
+      projectId,
+      { archived: rawBody.archived },
+      req.user!.id,
+      !!req.actingAsSuperAdmin
+    );
+
+    if (!updated) {
+      return sendResponse(res, StatusCodes.NOT_FOUND, false, "Project not found");
+    }
+
+    return sendResponse(res, StatusCodes.OK, true, "Project archive status updated successfully", updated);
+  } catch (error) {
+    console.error("archiveProject error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to update project archive status");
+  }
 }
