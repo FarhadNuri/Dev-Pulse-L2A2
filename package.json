@@ -10,6 +10,13 @@
     "db:init": "tsx ./src/database/init.ts",
     "db:migrate": "tsx ./src/database/migrate.ts",
     "db:migrate:comments": "tsx ./src/database/migrate-comments.ts",
+    "db:migrate:v2": "tsx ./scripts/runMigrations.ts",
+    "test": "tsx ./scripts/test_hardening.ts",
+    "test:hardening": "tsx ./scripts/test_hardening.ts",
+    "test:invitations": "tsx ./tests/invitations.test.ts",
+    "test:issues": "tsx ./tests/issues_v2.test.ts",
+    "test:activity": "tsx ./tests/activity.test.ts",
+    "seed:admin": "tsx ./scripts/seedSuperAdmin.ts",
     "vercel-build": "tsup"
   },
   "engines": {
@@ -37,6 +44,7 @@
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.21.0",
     "tsup": "^8.5.1",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "zod": "^4.6.7"
   }
 }
