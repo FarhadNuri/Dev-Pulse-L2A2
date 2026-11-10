@@ -1,144 +1,257 @@
 import type { ServerResponse } from "http";
 import { parseBody } from "../utility/parseBody";
 import { sendResponse } from "../utility/sendResponse";
-import {
-  createComment,
-  getCommentsByIssueId,
-  getCommentById,
-  deleteComment,
-} from "../service/comment.service";
-import { getIssueById } from "../service/issue.service";
-import { findUsersByIds } from "../service/user.service";
+import * as commentService from "../service/comment.service";
+import * as issueService from "../service/issue.service";
+import { pool } from "../database/db";
 import { StatusCodes } from "http-status-codes";
-import type { AuthRequest } from "../middleware/auth";
-import type { ICreateCommentRequest } from "../types/comment.type";
+import type { OrgRequest } from "../types/org.type";
+import { validateSchema } from "../validation";
+import { createCommentSchema } from "../validation/comment.schema";
 
-export const getCommentsController = async (
-  req: AuthRequest,
+interface CreateCommentBody {
+  body?: string;
+}
+
+/**
+ * GET /api/orgs/:orgId/issues/:issueId/comments
+ */
+export async function getCommentsController(
+  req: OrgRequest,
   res: ServerResponse,
-  issueId: number,
-) => {
+) {
   try {
-    const issue = await getIssueById(issueId);
+    const orgId = Number(req.params?.orgId);
+    const issueId = Number(req.params?.issueId);
+
+    if (isNaN(orgId) || isNaN(issueId)) {
+      return sendResponse(
+        res,
+        StatusCodes.BAD_REQUEST,
+        false,
+        "Invalid orgId or issueId",
+      );
+    }
+
+    const issue = await issueService.getSingleIssue(orgId, issueId);
     if (!issue) {
       return sendResponse(res, StatusCodes.NOT_FOUND, false, "Issue not found");
     }
 
-    const comments = await getCommentsByIssueId(issueId);
-    const authorIds = [...new Set(comments.map((c) => c.author_id))];
-    const authors = authorIds.length > 0 ? await findUsersByIds(authorIds) : [];
+    // Permission check:
+    // Maintainers have full access.
+    // Guests can only view comments on their own issues.
+    // Members require approved membership on the issue's project.
+    const isMaintainer =
+      req.orgRole === "owner" ||
+      req.orgRole === "admin" ||
+      !!req.actingAsSuperAdmin;
 
-    const commentsWithAuthors = comments.map((comment) => {
-      const author = authors.find((a) => a.id === comment.author_id);
-      const { author_id, ...commentWithoutAuthorId } = comment;
-      return {
-        ...commentWithoutAuthorId,
-        author: author
-          ? { id: author.id, name: author.name, role: author.role }
-          : { id: author_id, name: "Unknown", role: "unknown" },
-      };
-    });
+    if (!isMaintainer) {
+      if (req.orgRole === "guest") {
+        if (issue.reporter.id !== req.user!.id) {
+          return sendResponse(
+            res,
+            StatusCodes.FORBIDDEN,
+            false,
+            "Guests can only view comments on their own issues",
+          );
+        }
+      } else {
+        const pmRes = await pool.query(
+          "SELECT status FROM project_members WHERE project_id = $1 AND user_id = $2",
+          [issue.project_id, req.user!.id],
+        );
+        if (pmRes.rows.length === 0 || pmRes.rows[0].status !== "approved") {
+          return sendResponse(
+            res,
+            StatusCodes.FORBIDDEN,
+            false,
+            "You do not have access to this project's comments",
+          );
+        }
+      }
+    }
+
+    const comments = await commentService.getCommentsByIssueId(issueId);
 
     return sendResponse(
       res,
       StatusCodes.OK,
       true,
       "Comments retrieved successfully",
-      commentsWithAuthors,
+      comments,
     );
   } catch (error) {
-    console.error("Get comments error:", error);
+    console.error("getCommentsController error:", error);
     return sendResponse(
       res,
       StatusCodes.INTERNAL_SERVER_ERROR,
       false,
-      "Something went wrong!",
-      undefined,
-      error,
+      "Failed to retrieve comments",
     );
   }
-};
+}
 
-export const createCommentController = async (
-  req: AuthRequest,
+/**
+ * POST /api/orgs/:orgId/issues/:issueId/comments
+ */
+export async function createCommentController(
+  req: OrgRequest,
   res: ServerResponse,
-  issueId: number,
-) => {
+) {
   try {
-    const body: ICreateCommentRequest = await parseBody(req);
+    const orgId = Number(req.params?.orgId);
+    const issueId = Number(req.params?.issueId);
 
-    if (!body.body || body.body.trim().length === 0) {
+    if (isNaN(orgId) || isNaN(issueId)) {
       return sendResponse(
         res,
         StatusCodes.BAD_REQUEST,
         false,
-        "Comment body is required",
+        "Invalid orgId or issueId",
       );
     }
 
-    if (body.body.length > 1000) {
+    const rawBody = await parseBody(req);
+    const validation = validateSchema(createCommentSchema, rawBody);
+    if (!validation.success) {
       return sendResponse(
         res,
         StatusCodes.BAD_REQUEST,
         false,
-        "Comment must not exceed 1000 characters",
+        validation.error,
       );
     }
+    const commentBody = validation.data.body;
 
-    const issue = await getIssueById(issueId);
+    const issue = await issueService.getSingleIssue(orgId, issueId);
     if (!issue) {
       return sendResponse(res, StatusCodes.NOT_FOUND, false, "Issue not found");
     }
 
-    const authorId = req.user?.id;
-    if (!authorId) {
-      return sendResponse(
-        res,
-        StatusCodes.UNAUTHORIZED,
-        false,
-        "Authentication required",
-      );
+    // Permission check:
+    const isMaintainer =
+      req.orgRole === "owner" ||
+      req.orgRole === "admin" ||
+      !!req.actingAsSuperAdmin;
+
+    if (!isMaintainer) {
+      if (req.orgRole === "guest") {
+        if (issue.reporter.id !== req.user!.id) {
+          return sendResponse(
+            res,
+            StatusCodes.FORBIDDEN,
+            false,
+            "Guests can only comment on their own issues",
+          );
+        }
+      } else {
+        const pmRes = await pool.query(
+          "SELECT status FROM project_members WHERE project_id = $1 AND user_id = $2",
+          [issue.project_id, req.user!.id],
+        );
+        if (pmRes.rows.length === 0 || pmRes.rows[0].status !== "approved") {
+          return sendResponse(
+            res,
+            StatusCodes.FORBIDDEN,
+            false,
+            "You do not have access to this project",
+          );
+        }
+      }
     }
 
-    const newComment = await createComment(issueId, authorId, body.body.trim());
-    const authors = await findUsersByIds([authorId]);
-    const author = authors[0];
-
-    const { author_id, ...commentWithoutAuthorId } = newComment;
-    const commentWithAuthor = {
-      ...commentWithoutAuthorId,
-      author: author
-        ? { id: author.id, name: author.name, role: author.role }
-        : { id: author_id, name: "Unknown", role: "unknown" },
-    };
+    const newComment = await commentService.createComment(
+      issueId,
+      req.user!.id,
+      commentBody,
+      validation.data.mentions,
+      !!req.actingAsSuperAdmin
+    );
 
     return sendResponse(
       res,
       StatusCodes.CREATED,
       true,
       "Comment created successfully",
-      commentWithAuthor,
+      newComment,
     );
-  } catch (error) {
-    console.error("Create comment error:", error);
+  } catch (error: any) {
+    if (error instanceof commentService.ValidationError) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, error.message);
+    }
+    console.error("createCommentController error:", error);
     return sendResponse(
       res,
       StatusCodes.INTERNAL_SERVER_ERROR,
       false,
-      "Something went wrong!",
-      undefined,
-      error,
+      "Failed to create comment",
     );
   }
-};
+}
 
-export const deleteCommentController = async (
-  req: AuthRequest,
+/**
+ * GET /api/orgs/:orgId/projects/:projectId/mentionable
+ */
+export async function getMentionableUsersController(
+  req: OrgRequest,
   res: ServerResponse,
-  commentId: number,
-) => {
+) {
   try {
-    const comment = await getCommentById(commentId);
+    const orgId = Number(req.params?.orgId);
+    const projectId = Number(req.params?.projectId);
+
+    if (isNaN(orgId) || isNaN(projectId)) {
+      return sendResponse(
+        res,
+        StatusCodes.BAD_REQUEST,
+        false,
+        "Invalid orgId or projectId",
+      );
+    }
+
+    const mentionable = await commentService.getMentionableUsers(orgId, projectId);
+
+    return sendResponse(
+      res,
+      StatusCodes.OK,
+      true,
+      "Mentionable users retrieved successfully",
+      mentionable,
+    );
+  } catch (error) {
+    console.error("getMentionableUsersController error:", error);
+    return sendResponse(
+      res,
+      StatusCodes.INTERNAL_SERVER_ERROR,
+      false,
+      "Failed to retrieve mentionable users",
+    );
+  }
+}
+
+/**
+ * DELETE /api/orgs/:orgId/comments/:commentId
+ */
+export async function deleteCommentController(
+  req: OrgRequest,
+  res: ServerResponse,
+) {
+  try {
+    const orgId = Number(req.params?.orgId);
+    const commentId = Number(req.params?.commentId);
+
+    if (isNaN(orgId) || isNaN(commentId)) {
+      return sendResponse(
+        res,
+        StatusCodes.BAD_REQUEST,
+        false,
+        "Invalid orgId or commentId",
+      );
+    }
+
+    const comment = await commentService.getCommentWithOrg(commentId, orgId);
     if (!comment) {
       return sendResponse(
         res,
@@ -148,20 +261,13 @@ export const deleteCommentController = async (
       );
     }
 
-    const userId = req.user?.id;
-    const userRole = req.user?.role;
+    const isMaintainer =
+      req.orgRole === "owner" ||
+      req.orgRole === "admin" ||
+      !!req.actingAsSuperAdmin;
+    const isAuthor = comment.author_id === req.user!.id;
 
-    if (!userId || !userRole) {
-      return sendResponse(
-        res,
-        StatusCodes.UNAUTHORIZED,
-        false,
-        "Authentication required",
-      );
-    }
-
-
-    if (userRole !== "maintainer" && comment.author_id !== userId) {
+    if (!isMaintainer && !isAuthor) {
       return sendResponse(
         res,
         StatusCodes.FORBIDDEN,
@@ -170,23 +276,18 @@ export const deleteCommentController = async (
       );
     }
 
-    await deleteComment(commentId);
+    await commentService.deleteComment(commentId, req.user!.id, !!req.actingAsSuperAdmin);
 
-    return sendResponse(
-      res,
-      StatusCodes.OK,
-      true,
-      "Comment deleted successfully",
-    );
+    res.writeHead(StatusCodes.NO_CONTENT);
+    res.end();
+    return;
   } catch (error) {
-    console.error("Delete comment error:", error);
+    console.error("deleteCommentController error:", error);
     return sendResponse(
       res,
       StatusCodes.INTERNAL_SERVER_ERROR,
       false,
-      "Something went wrong!",
-      undefined,
-      error,
+      "Failed to delete comment",
     );
   }
-};
+}
