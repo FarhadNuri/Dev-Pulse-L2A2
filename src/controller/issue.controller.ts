@@ -1,520 +1,378 @@
 import type { ServerResponse } from "http";
+import { StatusCodes } from "http-status-codes";
 import { parseBody } from "../utility/parseBody";
 import { sendResponse } from "../utility/sendResponse";
+import * as issueService from "../service/issue.service";
+import { ValidationError } from "../service/issue.service";
+import { pool } from "../database/db";
+import type { OrgRequest } from "../types/org.type";
+import { validateSchema } from "../validation";
 import {
-  createIssue,
-  getAllIssues,
-  getIssueById,
-  updateIssue,
-  deleteIssue,
-  getPendingIssues,
-  approveIssue,
-} from "../service/issue.service";
-import { findUsersByIds } from "../service/user.service";
-import { StatusCodes } from "http-status-codes";
-import type { AuthRequest } from "../middleware/auth";
-import type { ICreateIssueRequest, IUpdateIssueRequest, IApproveIssueRequest } from "../types/issue.type";
+  createIssueSchema,
+  updateIssueSchema,
+  decideIssueApprovalSchema,
+  listIssuesQuerySchema,
+  listPendingIssuesQuerySchema,
+  myRequestsQuerySchema,
+} from "../validation/issue.schema";
 
-
-export const createIssueController = async (
-  req: AuthRequest,
-  res: ServerResponse,
-) => {
+/**
+ * POST /api/orgs/:orgId/projects/:projectId/issues
+ */
+export async function createIssueController(req: OrgRequest, res: ServerResponse) {
   try {
-    const body: ICreateIssueRequest = await parseBody(req);
-
-    if (!body.title || !body.description || !body.type) {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Title, description, and type are required",
-      );
+    const orgId = Number(req.params?.orgId);
+    const projectId = Number(req.params?.projectId);
+    const rawBody = await parseBody(req);
+    const validation = validateSchema(createIssueSchema, rawBody);
+    if (!validation.success) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, validation.error);
     }
+    const body = validation.data;
 
-    if (body.title.length > 150) {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Title must not exceed 150 characters",
-      );
-    }
+    const callerProjectRole = (req as any).projectRole;
+    const isClient = callerProjectRole === "client" || req.orgRole === "guest";
+    const approvalStatus = isClient ? "pending" : "approved";
 
-    if (body.description.length < 20) {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Description must be at least 20 characters",
-      );
-    }
-
-    if (body.type !== "bug" && body.type !== "feature_request") {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Type must be either 'bug' or 'feature_request'",
-      );
-    }
-
-    const reporterId = req.user?.id;
-    const userRole = req.user?.role;
-
-    if (!reporterId || !userRole) {
-      return sendResponse(
-        res,
-        StatusCodes.UNAUTHORIZED,
-        false,
-        "Authentication required",
-      );
-    }
-
-    let approvalStatus = "approved";
-    let appName = body.app_name;
-
-    if (userRole === "client") {
-      approvalStatus = "pending";
-      if (!body.app_name) {
-        return sendResponse(
-          res,
-          StatusCodes.BAD_REQUEST,
-          false,
-          "app_name is required for client users",
-        );
-      }
-    }
-
-    const projectId = (req as any).params?.projectId;
-
-    const newIssue = await createIssue(
+    const issue = await issueService.createIssue(
+      orgId,
       projectId,
       body.title,
       body.description,
       body.type,
-      reporterId,
-      appName,
+      req.user!.id,
       approvalStatus,
+      body.app_name,
+      body.assigneeId,
+      body.labelIds,
+      !!req.actingAsSuperAdmin
     );
 
-    return sendResponse(
-      res,
-      StatusCodes.CREATED,
-      true,
-      "Issue created successfully",
-      newIssue,
-    );
+    return sendResponse(res, StatusCodes.CREATED, true, "Issue created successfully", issue);
   } catch (error) {
-    console.error("Create issue error:", error);
-    return sendResponse(
-      res,
-      StatusCodes.INTERNAL_SERVER_ERROR,
-      false,
-      "Something went wrong!",
-      undefined,
-      error,
-    );
+    if (error instanceof ValidationError) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, error.message);
+    }
+    console.error("createIssue error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to create issue");
   }
-};
+}
 
-export const getAllIssuesController = async (
-  req: AuthRequest,
-  res: ServerResponse,
-) => {
+/**
+ * GET /api/orgs/:orgId/projects/:projectId/issues
+ */
+export async function listIssuesController(req: OrgRequest, res: ServerResponse) {
   try {
-    const url = new URL(req.url || "", `http://${req.headers.host}`);
-    const sortOrder = url.searchParams.get("sort") || "newest";
-    const typeFilter = url.searchParams.get("type") || undefined;
-    const statusFilter = url.searchParams.get("status") || undefined;
+    const orgId = Number(req.params?.orgId);
+    const projectId = Number(req.params?.projectId);
 
-    if (typeFilter && typeFilter !== "bug" && typeFilter !== "feature_request") {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Invalid type filter. Must be 'bug' or 'feature_request'",
-      );
+    const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
+    const queryObj = Object.fromEntries(url.searchParams.entries());
+
+    // Extract all repeatable label parameters
+    const labelParams = url.searchParams.getAll("label");
+    if (labelParams.length > 0) {
+      (queryObj as any).label = labelParams.length === 1 ? labelParams[0] : labelParams;
     }
 
-    if (
-      statusFilter &&
-      statusFilter !== "open" &&
-      statusFilter !== "in_progress" &&
-      statusFilter !== "resolved"
-    ) {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Invalid status filter. Must be 'open', 'in_progress', or 'resolved'",
-      );
+    const validation = validateSchema(listIssuesQuerySchema, queryObj);
+    if (!validation.success) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, validation.error);
     }
+    const { search, status, type, assignee, label, sort, page, limit } = validation.data;
 
-    const projectId = (req as any).params?.projectId;
+    const callerProjectRole =
+      (req as any).projectRole ||
+      (req.orgRole === "owner" || req.orgRole === "admin" || !!req.actingAsSuperAdmin
+        ? "maintainer"
+        : "contributor");
 
-    const issues = await getAllIssues(
-      projectId,
-      sortOrder,
-      typeFilter,
-      statusFilter,
-      req.user?.role,
-      req.user?.id,
-    );
-
-    const reporterIds = [...new Set(issues.map((issue) => issue.reporter_id))];
-
-    const reporters = await findUsersByIds(reporterIds);
-
-    const issuesWithReporters = issues.map((issue) => {
-      const reporter = reporters.find((r) => r.id === issue.reporter_id);
-      const { reporter_id, ...issueWithoutReporterId } = issue;
-      return {
-        ...issueWithoutReporterId,
-        reporter: reporter
-          ? { id: reporter.id, name: reporter.name, role: reporter.role }
-          : { id: reporter_id, name: "Unknown", role: "unknown" },
-      };
+    const result = await issueService.listIssues(orgId, projectId, req.user!.id, callerProjectRole, {
+      search,
+      status,
+      type,
+      assignee,
+      label,
+      sort,
+      page,
+      limit,
     });
 
-    return sendResponse(res, StatusCodes.OK, true, "Issues retrieved successfully", issuesWithReporters);
+    return sendResponse(res, StatusCodes.OK, true, "Issues retrieved successfully", result);
   } catch (error) {
-    console.error("Get all issues error:", error);
-    return sendResponse(
-      res,
-      StatusCodes.INTERNAL_SERVER_ERROR,
-      false,
-      "Something went wrong!",
-      undefined,
-      error,
-    );
+    console.error("listIssues error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to list issues");
   }
-};
+}
 
-export const getSingleIssueController = async (
-  req: AuthRequest,
-  res: ServerResponse,
-  id: number,
-) => {
+/**
+ * GET /api/orgs/:orgId/issues/pending
+ * Maintainer only.
+ */
+export async function listPendingIssuesController(req: OrgRequest, res: ServerResponse) {
   try {
-    const issue = await getIssueById(id);
+    const orgId = Number(req.params?.orgId);
+    const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
+    const queryObj = Object.fromEntries(url.searchParams.entries());
+    const validation = validateSchema(listPendingIssuesQuerySchema, queryObj);
+    if (!validation.success) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, validation.error);
+    }
+    const { projectId, page, limit } = validation.data;
 
+    const result = await issueService.listPendingIssues(orgId, { projectId, page, limit });
+    return sendResponse(res, StatusCodes.OK, true, "Pending issues retrieved", result);
+  } catch (error) {
+    console.error("listPendingIssues error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to list pending issues");
+  }
+}
+
+/**
+ * GET /api/orgs/:orgId/issues/:issueId
+ */
+export async function getSingleIssueController(req: OrgRequest, res: ServerResponse) {
+  try {
+    const orgId = Number(req.params?.orgId);
+    const issueId = Number(req.params?.issueId);
+
+    const issue = await issueService.getSingleIssue(orgId, issueId);
     if (!issue) {
       return sendResponse(res, StatusCodes.NOT_FOUND, false, "Issue not found");
     }
 
-    const reporters = await findUsersByIds([issue.reporter_id]);
-    const reporter = reporters[0];
-
-    const { reporter_id, ...issueWithoutReporterId } = issue;
-    const issueWithReporter = {
-      ...issueWithoutReporterId,
-      reporter: reporter
-        ? { id: reporter.id, name: reporter.name, role: reporter.role }
-        : { id: reporter_id, name: "Unknown", role: "unknown" },
-    };
-
-    return sendResponse(
-      res,
-      StatusCodes.OK,
-      true,
-      "Issue retrieved successfully",
-      issueWithReporter,
-    );
-  } catch (error) {
-    console.error("Get single issue error:", error);
-    return sendResponse(
-      res,
-      StatusCodes.INTERNAL_SERVER_ERROR,
-      false,
-      "Something went wrong!",
-      undefined,
-      error,
-    );
-  }
-};
-
-import { hasProjectAccess } from "../service/project.service";
-
-export const updateIssueController = async (
-  req: AuthRequest,
-  res: ServerResponse,
-  id: number,
-) => {
-  try {
-    const body: IUpdateIssueRequest = await parseBody(req);
-
-    const existingIssue = await getIssueById(id);
-    if (!existingIssue) {
-      return sendResponse(res, StatusCodes.NOT_FOUND, false, "Issue not found");
-    }
-
-    const userId = req.user?.id;
-    const userRole = req.user?.role;
-
-    if (!userId || !userRole) {
-      return sendResponse(
-        res,
-        StatusCodes.UNAUTHORIZED,
-        false,
-        "Authentication required",
-      );
-    }
-
-    if (userRole === "client") {
-      if (existingIssue.reporter_id !== userId) {
-        return sendResponse(
-          res,
-          StatusCodes.FORBIDDEN,
-          false,
-          "You can only update your own issues",
+    const isMaintainer = req.orgRole === "owner" || req.orgRole === "admin" || !!req.actingAsSuperAdmin;
+    if (!isMaintainer) {
+      if (req.orgRole === "guest") {
+        if (issue.reporter.id !== req.user!.id) {
+          return sendResponse(res, StatusCodes.FORBIDDEN, false, "Guests can only view their own issues");
+        }
+      } else {
+        // Org member: check approved project membership
+        const pmRes = await pool.query(
+          "SELECT role, status FROM project_members WHERE project_id = $1 AND user_id = $2",
+          [issue.project_id, req.user!.id]
         );
-      }
-    } else if (userRole === "contributor") {
-      const hasAccess = await hasProjectAccess(existingIssue.project_id, userId);
-      if (!hasAccess && existingIssue.reporter_id !== userId) {
-        return sendResponse(
-          res,
-          StatusCodes.FORBIDDEN,
-          false,
-          "You must be an approved contributor to update this issue",
-        );
+        if (pmRes.rows.length === 0 || pmRes.rows[0].status !== "approved") {
+          return sendResponse(res, StatusCodes.FORBIDDEN, false, "You do not have access to this project's issues");
+        }
+        if (pmRes.rows[0].role === "client" && issue.reporter.id !== req.user!.id) {
+          return sendResponse(res, StatusCodes.FORBIDDEN, false, "Clients can only view their own issues");
+        }
       }
     }
 
-    if (body.title && body.title.length > 150) {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Title must not exceed 150 characters",
-      );
-    }
-
-    if (body.description && body.description.length < 20) {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Description must be at least 20 characters",
-      );
-    }
-
-    if (body.type && body.type !== "bug" && body.type !== "feature_request") {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Type must be either 'bug' or 'feature_request'",
-      );
-    }
-
-    if (body.status && body.status !== "open" && body.status !== "in_progress" && body.status !== "resolved") {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Status must be 'open', 'in_progress', or 'resolved'",
-      );
-    }
-
-    const updatedIssue = await updateIssue(
-      id,
-      body.title,
-      body.description,
-      body.type,
-      body.status,
-    );
-
-    if (!updatedIssue) {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "No fields to update",
-      );
-    }
-
-    return sendResponse(
-      res,
-      StatusCodes.OK,
-      true,
-      "Issue updated successfully",
-      updatedIssue,
-    );
+    return sendResponse(res, StatusCodes.OK, true, "Issue retrieved successfully", issue);
   } catch (error) {
-    console.error("Update issue error:", error);
-    return sendResponse(
-      res,
-      StatusCodes.INTERNAL_SERVER_ERROR,
-      false,
-      "Something went wrong!",
-      undefined,
-      error,
-    );
+    console.error("getSingleIssue error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to retrieve issue");
   }
-};
+}
 
-export const deleteIssueController = async (
-  req: AuthRequest,
-  res: ServerResponse,
-  id: number,
-) => {
+/**
+ * PATCH /api/orgs/:orgId/issues/:issueId
+ */
+export async function updateIssueController(req: OrgRequest, res: ServerResponse) {
   try {
-    const existingIssue = await getIssueById(id);
-    if (!existingIssue) {
+    const orgId = Number(req.params?.orgId);
+    const issueId = Number(req.params?.issueId);
+    const rawBody = await parseBody(req);
+    const validation = validateSchema(updateIssueSchema, rawBody);
+    if (!validation.success) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, validation.error);
+    }
+    const body = validation.data;
+
+    const issue = await issueService.getSingleIssue(orgId, issueId);
+    if (!issue) {
       return sendResponse(res, StatusCodes.NOT_FOUND, false, "Issue not found");
     }
 
-    const userId = req.user?.id;
-    const userRole = req.user?.role;
+    const isMaintainer = req.orgRole === "owner" || req.orgRole === "admin" || !!req.actingAsSuperAdmin;
+    const isReporter = issue.reporter.id === req.user!.id;
 
-    if (!userId || !userRole) {
-      return sendResponse(
-        res,
-        StatusCodes.UNAUTHORIZED,
-        false,
-        "Authentication required",
+    // Determine if caller is acting as client on this project
+    let isClientCaller = req.orgRole === "guest";
+    if (!isMaintainer && !isClientCaller) {
+      const pmRes = await pool.query(
+        "SELECT role, status FROM project_members WHERE project_id = $1 AND user_id = $2",
+        [issue.project_id, req.user!.id]
       );
+      if (pmRes.rows.length === 0 || pmRes.rows[0].status !== "approved") {
+        return sendResponse(res, StatusCodes.FORBIDDEN, false, "You do not have access to this project");
+      }
+      if (pmRes.rows[0].role === "client") {
+        isClientCaller = true;
+      }
     }
 
-    const isMaintainerRole = userRole === "maintainer";
-    const isOwnIssue = existingIssue.reporter_id === userId;
-
-    if (!isMaintainerRole && !isOwnIssue) {
-      return sendResponse(
-        res,
-        StatusCodes.FORBIDDEN,
-        false,
-        "You can only delete your own issues",
-      );
+    if (isClientCaller) {
+      // Client rules:
+      // 1. Only own issues
+      if (!isReporter) {
+        return sendResponse(res, StatusCodes.FORBIDDEN, false, "Clients can only update their own issues");
+      }
+      // 2. Only while pending or rejected. Once approved, can no longer edit
+      if (issue.approval_status === "approved") {
+        return sendResponse(res, StatusCodes.FORBIDDEN, false, "Approved issues cannot be edited by clients");
+      }
+      // 3. Clients can never send status/assignee/labels (403)
+      if (
+        (rawBody as any).status !== undefined ||
+        (rawBody as any).assigneeId !== undefined ||
+        (rawBody as any).labelIds !== undefined
+      ) {
+        return sendResponse(res, StatusCodes.FORBIDDEN, false, "Clients cannot modify status, assignee, or labels");
+      }
     }
 
-    const deleted = await deleteIssue(id);
+    const updated = await issueService.updateIssue(
+      orgId,
+      issueId,
+      {
+        title: body.title,
+        description: body.description,
+        type: body.type,
+        status: body.status,
+        assigneeId: body.assigneeId,
+        labelIds: body.labelIds,
+      },
+      req.user!.id,
+      !!req.actingAsSuperAdmin
+    );
 
-    if (!deleted) {
-      return sendResponse(
-        res,
-        StatusCodes.INTERNAL_SERVER_ERROR,
-        false,
-        "Failed to delete issue",
-      );
-    }
-
-    return sendResponse(res, StatusCodes.OK, true, "Issue deleted successfully");
+    return sendResponse(res, StatusCodes.OK, true, "Issue updated successfully", updated);
   } catch (error) {
-    console.error("Delete issue error:", error);
-    return sendResponse(
-      res,
-      StatusCodes.INTERNAL_SERVER_ERROR,
-      false,
-      "Something went wrong!",
-      undefined,
-      error,
-    );
+    if (error instanceof ValidationError) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, error.message);
+    }
+    console.error("updateIssue error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to update issue");
   }
-};
+}
 
-export const getPendingIssuesController = async (
-  req: AuthRequest,
-  res: ServerResponse,
-) => {
+/**
+ * DELETE /api/orgs/:orgId/issues/:issueId
+ */
+export async function deleteIssueController(req: OrgRequest, res: ServerResponse) {
   try {
-    const issues = await getPendingIssues();
+    const orgId = Number(req.params?.orgId);
+    const issueId = Number(req.params?.issueId);
 
-    const reporterIds = [...new Set(issues.map((issue) => issue.reporter_id))];
-    const reporters = await findUsersByIds(reporterIds);
-
-    const issuesWithReporters = issues.map((issue) => {
-      const reporter = reporters.find((r) => r.id === issue.reporter_id);
-      const { reporter_id, ...issueWithoutReporterId } = issue;
-      return {
-        ...issueWithoutReporterId,
-        reporter: reporter
-          ? { id: reporter.id, name: reporter.name, role: reporter.role }
-          : { id: reporter_id, name: "Unknown", role: "unknown" },
-      };
-    });
-
-    return sendResponse(
-      res,
-      StatusCodes.OK,
-      true,
-      "Pending issues retrieved successfully",
-      issuesWithReporters,
-    );
-  } catch (error) {
-    console.error("Get pending issues error:", error);
-    return sendResponse(
-      res,
-      StatusCodes.INTERNAL_SERVER_ERROR,
-      false,
-      "Something went wrong!",
-      undefined,
-      error,
-    );
-  }
-};
-
-export const approveIssueController = async (
-  req: AuthRequest,
-  res: ServerResponse,
-  id: number,
-) => {
-  try {
-    const body: IApproveIssueRequest = await parseBody(req);
-
-    if (!body.action || (body.action !== "approved" && body.action !== "rejected")) {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Action must be 'approved' or 'rejected'",
-      );
+    const issue = await issueService.getSingleIssue(orgId, issueId);
+    if (!issue) {
+      return sendResponse(res, StatusCodes.NOT_FOUND, false, "Issue not found");
     }
 
-    const existingIssue = await getIssueById(id);
+    const isMaintainer = req.orgRole === "owner" || req.orgRole === "admin" || !!req.actingAsSuperAdmin;
+    const isReporter = issue.reporter.id === req.user!.id;
+
+    if (!isMaintainer && !isReporter) {
+      return sendResponse(res, StatusCodes.FORBIDDEN, false, "You can only delete your own issues");
+    }
+
+    await issueService.deleteIssue(orgId, issueId, req.user!.id, !!req.actingAsSuperAdmin);
+
+    res.writeHead(StatusCodes.NO_CONTENT);
+    res.end();
+    return;
+  } catch (error) {
+    console.error("deleteIssue error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to delete issue");
+  }
+}
+
+/**
+ * PATCH /api/orgs/:orgId/issues/:issueId/approve
+ */
+export async function decideIssueApprovalController(req: OrgRequest, res: ServerResponse) {
+  try {
+    const orgId = Number(req.params?.orgId);
+    const issueId = Number(req.params?.issueId);
+    const rawBody = await parseBody(req);
+    const validation = validateSchema(decideIssueApprovalSchema, rawBody);
+    if (!validation.success) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, validation.error);
+    }
+    const body = validation.data;
+
+    const existingIssue = await issueService.getSingleIssue(orgId, issueId);
     if (!existingIssue) {
       return sendResponse(res, StatusCodes.NOT_FOUND, false, "Issue not found");
     }
 
     if (existingIssue.approval_status !== "pending") {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Issue has already been approved or rejected",
-      );
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, "Issue is not in pending approval status");
     }
 
-    const maintainerId = req.user?.id;
-    if (!maintainerId) {
-      return sendResponse(
-        res,
-        StatusCodes.UNAUTHORIZED,
-        false,
-        "Authentication required",
-      );
-    }
-
-    const updatedIssue = await approveIssue(id, body.action, maintainerId);
-
-    return sendResponse(
-      res,
-      StatusCodes.OK,
-      true,
-      `Issue ${body.action} successfully`,
-      updatedIssue,
+    const updated = await issueService.decideIssueApproval(
+      orgId,
+      issueId,
+      body.action,
+      req.user!.id,
+      body.reason,
+      !!req.actingAsSuperAdmin
     );
+
+    return sendResponse(res, StatusCodes.OK, true, `Issue ${body.action} successfully`, updated);
   } catch (error) {
-    console.error("Approve issue error:", error);
-    return sendResponse(
-      res,
-      StatusCodes.INTERNAL_SERVER_ERROR,
-      false,
-      "Something went wrong!",
-      undefined,
-      error,
-    );
+    console.error("approveIssue error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to approve/reject issue");
   }
-};
+}
+
+/**
+ * POST /api/orgs/:orgId/issues/:issueId/resubmit
+ */
+export async function resubmitIssueController(req: OrgRequest, res: ServerResponse) {
+  try {
+    const orgId = Number(req.params?.orgId);
+    const issueId = Number(req.params?.issueId);
+
+    const issue = await issueService.getSingleIssue(orgId, issueId);
+    if (!issue) {
+      return sendResponse(res, StatusCodes.NOT_FOUND, false, "Issue not found");
+    }
+
+    if (issue.reporter.id !== req.user!.id) {
+      return sendResponse(res, StatusCodes.FORBIDDEN, false, "Only the reporter can resubmit this issue");
+    }
+
+    if (issue.approval_status !== "rejected") {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, "Only rejected issues can be resubmitted");
+    }
+
+    const resubmitted = await issueService.resubmitIssue(
+      orgId,
+      issueId,
+      req.user!.id,
+      !!req.actingAsSuperAdmin
+    );
+    return sendResponse(res, StatusCodes.OK, true, "Issue resubmitted for approval", resubmitted);
+  } catch (error) {
+    console.error("resubmitIssue error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to resubmit issue");
+  }
+}
+
+/**
+ * GET /api/orgs/:orgId/my-requests
+ */
+export async function getMyRequestsController(req: OrgRequest, res: ServerResponse) {
+  try {
+    const orgId = Number(req.params?.orgId);
+    const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
+    const queryObj = Object.fromEntries(url.searchParams.entries());
+    const validation = validateSchema(myRequestsQuerySchema, queryObj);
+    if (!validation.success) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, validation.error);
+    }
+    const { status, projectId, page, limit } = validation.data;
+
+    const result = await issueService.getMyRequests(orgId, req.user!.id, { status, projectId, page, limit });
+    return sendResponse(res, StatusCodes.OK, true, "My requests retrieved", result);
+  } catch (error) {
+    console.error("getMyRequests error:", error);
+    return sendResponse(res, StatusCodes.INTERNAL_SERVER_ERROR, false, "Failed to retrieve my requests");
+  }
+}
