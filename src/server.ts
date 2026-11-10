@@ -2,18 +2,13 @@ import { createServer, IncomingMessage, Server, ServerResponse } from "http";
 import config from "./config";
 import { routeHandler } from "./routes/route";
 import { testConnection } from "./database/db";
+import { applySecurityHeaders } from "./middleware/securityHeaders";
 
-export { routeHandler };
+export { routeHandler, applySecurityHeaders };
 
 const server: Server = createServer(
   (req: IncomingMessage, res: ServerResponse) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-    if (req.method === "OPTIONS") {
-      res.writeHead(204);
-      res.end();
+    if (applySecurityHeaders(req, res)) {
       return;
     }
 
@@ -21,8 +16,7 @@ const server: Server = createServer(
   },
 );
 
-
-if (process.env.VERCEL !== "1") {
+if (process.env.VERCEL !== "1" && process.env.NODE_ENV !== "test") {
   testConnection().then(() => {
     server.listen(config.port, () => {
       console.log(`DevPulse server is running on port ${config.port}`);
