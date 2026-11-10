@@ -1,84 +1,95 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { parseBody } from "../utility/parseBody";
 import { sendResponse } from "../utility/sendResponse";
-import { hashPassword, comparePassword } from "../utility/password";
+import { hashPassword, verifyAndMigratePassword } from "../utility/password";
 import { generateToken } from "../utility/jwt";
 import { createUser, findUserByEmail } from "../service/user.service";
+import * as invitationService from "../service/invitation.service";
 import { StatusCodes } from "http-status-codes";
-import type { ISignupRequest, ILoginRequest } from "../types/user.type";
-
+import { validateSchema, signupSchema, loginSchema } from "../validation";
+import { checkRateLimit, resetRateLimit } from "../middleware/rateLimit";
 
 export const signup = async (req: IncomingMessage, res: ServerResponse) => {
   try {
-    const body: ISignupRequest = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const val = validateSchema(signupSchema, rawBody);
 
-    if (!body.name || !body.email || !body.password) {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Name, email, and password are required",
-      );
+    if (!val.success) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, val.error);
     }
 
-    const existingUser = await findUserByEmail(body.email);
-    if (existingUser) {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "User with this email already exists",
-      );
+    const { name, email, password, inviteToken } = val.data;
+
+    // Apply in-memory rate limiting per IP+email
+    if (!checkRateLimit(req, res, email)) {
+      return;
     }
 
-    const role = body.role || "contributor";
-    if (role !== "contributor" && role !== "maintainer" && role !== "client") {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Role must be 'contributor', 'maintainer', or 'client'",
-      );
-    }
+    const hashedPassword = await hashPassword(password);
+    const { user, joined } = await invitationService.signupWithInvitation(
+      name,
+      email,
+      hashedPassword,
+      inviteToken
+    );
 
-    const hashedPassword = await hashPassword(body.password);
-
-    const newUser = await createUser(body.name, body.email, hashedPassword, role);
+    const token = generateToken({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: (user.role as "contributor" | "maintainer" | "client") || "contributor",
+    });
 
     return sendResponse(
       res,
       StatusCodes.CREATED,
       true,
       "User registered successfully",
-      newUser,
+      {
+        token,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          is_super_admin: user.is_super_admin,
+        },
+        joined,
+      },
     );
   } catch (error) {
+    if (error instanceof invitationService.ValidationError) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, error.message);
+    }
+    if (error instanceof invitationService.ConflictError) {
+      return sendResponse(res, StatusCodes.CONFLICT, false, error.message);
+    }
     console.error("Signup error:", error);
     return sendResponse(
       res,
       StatusCodes.INTERNAL_SERVER_ERROR,
       false,
       "Something went wrong!",
-      undefined,
-      error,
     );
   }
 };
 
 export const login = async (req: IncomingMessage, res: ServerResponse) => {
   try {
-    const body: ILoginRequest = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const val = validateSchema(loginSchema, rawBody);
 
-    if (!body.email || !body.password) {
-      return sendResponse(
-        res,
-        StatusCodes.BAD_REQUEST,
-        false,
-        "Email and password are required",
-      );
+    if (!val.success) {
+      return sendResponse(res, StatusCodes.BAD_REQUEST, false, val.error);
     }
 
-    const user = await findUserByEmail(body.email);
+    const { email, password } = val.data;
+
+    // Apply in-memory rate limiting per IP+email
+    if (!checkRateLimit(req, res, email)) {
+      return;
+    }
+
+    const user = await findUserByEmail(email);
     if (!user) {
       return sendResponse(
         res,
@@ -88,7 +99,13 @@ export const login = async (req: IncomingMessage, res: ServerResponse) => {
       );
     }
 
-    const isPasswordValid = await comparePassword(body.password, user.password);
+    // Verify password with automatic migration if stored as plain text
+    const isPasswordValid = await verifyAndMigratePassword(
+      password,
+      user.password,
+      user.id,
+    );
+
     if (!isPasswordValid) {
       return sendResponse(
         res,
@@ -98,25 +115,32 @@ export const login = async (req: IncomingMessage, res: ServerResponse) => {
       );
     }
 
+    if (user.status === "disabled") {
+      return sendResponse(
+        res,
+        StatusCodes.UNAUTHORIZED,
+        false,
+        "Account is disabled",
+      );
+    }
+
+    // Reset rate limiter on successful authentication
+    resetRateLimit(req, email);
+
     const token = generateToken({
       id: user.id,
       name: user.name,
+      email: user.email,
       role: user.role,
+      is_super_admin: !!(user as any).is_super_admin,
     });
 
+    const { password: _pwd, ...userWithoutPassword } = user;
 
-    const { password, ...userWithoutPassword } = user;
-
-    return sendResponse(
-      res,
-      StatusCodes.OK,
-      true,
-      "Login successful",
-      {
-        token,
-        user: userWithoutPassword,
-      },
-    );
+    return sendResponse(res, StatusCodes.OK, true, "Login successful", {
+      token,
+      user: userWithoutPassword,
+    });
   } catch (error) {
     console.error("Login error:", error);
     return sendResponse(
@@ -124,8 +148,6 @@ export const login = async (req: IncomingMessage, res: ServerResponse) => {
       StatusCodes.INTERNAL_SERVER_ERROR,
       false,
       "Something went wrong!",
-      undefined,
-      error,
     );
   }
 };
